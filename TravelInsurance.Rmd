@@ -1,0 +1,123 @@
+---
+title: "Travel Insurance Exploration and Analysis"
+author: "Tracy Lam"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Importing the dataset
+
+```{r, collapse=T}
+#necessary libraries
+library(tidyverse)
+library(ggplot2)
+library(dbplyr)
+library(boot)
+library(plotROC)
+```
+
+```{r, collapse=T}
+#Import dataset and check the first six rows
+travelInsurance <- read.csv(file = '/Users/tracylam/Desktop/Portfolio/R/TravelInsurancePrediction.csv')
+head(travelInsurance)
+```
+
+## Data Cleaning
+
+```{r, collapse=T}
+#Checking to see if there is any nulls in each column
+colSums(is.na(travelInsurance))
+```
+
+Since there are no nulls within each column, this means there is not missing data.
+
+## Data Exploration and Visualization
+
+```{r, collapse=T}
+#creating the plots to view the different distributions of the variables
+#p1 showcases their ages
+p1 <- ggplot(data=travelInsurance) +
+  geom_bar(mapping = aes(x = Age), fill = '#B3E2CD', color = 'black') +
+  geom_text(mapping = aes(x = Age, label = ..count..),stat = 'count', vjust=-0.50)
+p1
+#p2 showcases employment type
+p2 <- ggplot(data=travelInsurance) +
+  geom_bar(mapping = aes(x = "", fill = Employment.Type), width = 1) +
+  labs(x = NULL, y = NULL)
+p2 <- p2 + coord_polar(theta = "y") +
+  theme(aspect.ratio = 1) +
+  scale_fill_brewer(palette = "Pastel2")
+p2
+#p3 showcases if they are a frequent flyer or not
+p3 <- ggplot(data=travelInsurance) +
+  geom_bar(mapping = aes(x = "", fill = FrequentFlyer), width = 1) +
+  labs(x = NULL, y = NULL)
+p3 <- p3 + coord_polar(theta = "y") +
+  theme(aspect.ratio = 1) +
+  scale_fill_brewer(palette = "Pastel2")
+p3
+#p4 showcases annual income
+p4 <- ggplot(data=travelInsurance, mapping = aes(x = AnnualIncome)) +
+  geom_histogram(mapping = aes(y=..density..), colour = "black", fill = "white")+
+  geom_density(alpha = 0.2, fill = "#B3E2CD")
+p4
+```
+
+## Logistic Regression
+
+```{r,collapse=T}
+#creating the logistic regression model
+logit.fit <- glm(TravelInsurance ~ ., family = binomial(), data = travelInsurance)
+summary(logit.fit)
+```
+As seen in the logistic regression model above, the most significant predictors for the binary variable, TravelInsurance, include age, annual income, family members, and if they are a frequent flyer. This is due to the fact that the p-values of these variables are less than the significance level of 0.05.
+
+```{r,collapse=T}
+#Predicting the conditional probabilities
+logit.fit.prob <- predict(logit.fit, type = 'response')
+
+#Bayes Rule
+logit.fit.class <- ifelse(logit.fit.prob > 0.5, "1", "0") %>% as.factor()
+
+#Calculating the misclassification error rate
+mean(travelInsurance$TravelInsurance != logit.fit.class)
+```
+
+```{r,collapse=T}
+#Using cross validation to evaluate the logistic model
+#setting an appropriate cost function for binary response variable
+cost <- function(r, pi = 0) mean(abs(r-pi) > 0.5)
+#10-fold cross validation
+cv.glm(travelInsurance, logit.fit, cost=cost, K=10)$delta[1]
+```
+
+```{r, collapse=T}
+#Creating a confusion matrix
+confusion.matrix <- table(travelInsurance$TravelInsurance, logit.fit.class)
+confusion.matrix
+
+#Sensitivity
+tp <- confusion.matrix[2,2]
+fn <- confusion.matrix[2,1]
+sensitivity <- tp/(tp+fn)
+sensitivity
+
+#Specificity
+tn <- confusion.matrix[1,1]
+fp <- confusion.matrix[1,2]
+specificity <- tn/(tn+fp)
+specificity
+```
+
+```{r}
+#Visualizing the trade-off between sensitivity and specificity with ROC curve
+roc.df <- tibble(observed = travelInsurance$TravelInsurance,
+                 predicted = logit.fit.prob)
+ggplot(data = roc.df, mapping = aes(d = observed, m = predicted)) +
+  geom_roc(labels = F)
+```
+
+
